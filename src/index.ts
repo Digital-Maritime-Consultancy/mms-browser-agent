@@ -22,6 +22,7 @@ import {Certificate} from "pkijs";
 import {fromBER, Integer, Sequence} from "asn1js";
 import {bufToBigint} from "bigint-conversion";
 import {ResponseSearchObject} from "./SecomSearch";
+import {SmmpHeader, SmmpMessage} from "../smmp";
 
 console.log("Hello World!");
 
@@ -50,10 +51,16 @@ const incomingArea = document.getElementById("incomingArea") as HTMLDivElement;
 const subsList = document.getElementById("subscriptions") as HTMLUListElement;
 const subjectSelect = document.getElementById("subjectSelect") as HTMLSelectElement;
 
+//All SMMP relevant items
+const smmpMenu = document.getElementById("smmpMenu") as HTMLDivElement
+const smmpConnectBtn = document.getElementById("smmpConnectBtn") as HTMLButtonElement;
+
+
 const mrnStoreUrl = "https://mrn-store.dmc.international";
 const msrSecomSearchUrl = "https://msr.maritimeconnectivity.net/api/secom/v1/searchService";
 
 const greenCheckMark = "\u2705";
+
 
 interface Subject {
     value: string,
@@ -139,6 +146,7 @@ connectBtn.addEventListener("click", async () => {
 
                 if (authenticated) {
                     sendContainer.hidden = false;
+                    smmpMenu.hidden = false;
                     const subMsg = MmtpMessage.create({
                         msgType: MsgType.PROTOCOL_MESSAGE,
                         uuid: uuidv4(),
@@ -189,7 +197,37 @@ connectBtn.addEventListener("click", async () => {
                     const msgs = mmtpMessage.responseMessage.applicationMessages;
                     for (const msg of msgs) {
                         const validSignature = await verifySignatureOnMessage(msg);
-                        showReceivedMessage(msg, validSignature);
+
+                        //Check if SMMP and in that case handle it as SMMP
+                        let msgIsSmmp = await isSmmp(msg)
+                        if (msgIsSmmp) {
+                            const smmpMessage = SmmpMessage.decode(new Uint8Array(msg.body));
+                            const flags : number = smmpMessage.header.control[1]
+                            //Handle cases of SMMP messages
+                            console.log("flags", flags)
+                            if (hasFlags(flags, [FlagsEnum.Handshake, FlagsEnum.Confidentiality])) {
+                                console.log("Handshake initiation")
+
+                                // 2nd step handshake
+                                if (hasFlags(flags, [FlagsEnum.Handshake, FlagsEnum.Confidentiality, FlagsEnum.ACK])) {
+
+                                // 1st step handshake
+                                } else {
+
+                                }
+                            // Case - Reception of an ACK of a received message with delivery guarantee
+                            } else if (hasFlags(flags, [FlagsEnum.ACK, FlagsEnum.Confidentiality, FlagsEnum.DeliveryGuarantee])) {
+
+                            // Case - last part of three-way handshake, i.e. 3rd step of three-way handshake
+                            } else if (hasFlags(flags, [FlagsEnum.ACK, FlagsEnum.Confidentiality])) {
+
+                            // Case regular reception of an encrypted message
+                            } else if (hasFlags(flags, [FlagsEnum.Confidentiality])) {
+
+                            }
+                        } else {
+                            showReceivedMessage(msg, validSignature);
+                        }
                     }
                 } else if (mmtpMessage.msgType === MsgType.PROTOCOL_MESSAGE && mmtpMessage.protocolMessage?.protocolMsgType === ProtocolMessageType.NOTIFY_MESSAGE) {
                     const notifyMsg = mmtpMessage.protocolMessage.notifyMessage;
@@ -250,6 +288,36 @@ connectBtn.addEventListener("click", async () => {
     });
 });
 
+async function isSmmp(msg: IApplicationMessage): Promise<boolean> {
+    console.log("Ismessage");
+    let smmpMessage: SmmpMessage;
+    try {
+        smmpMessage = SmmpMessage.decode(new Uint8Array(msg.body));
+    } catch (error) {
+        console.log("Message could not be parsed as smmp:", error);
+        return false;
+    }
+    console.log("Complete");
+
+    // Define the magic bytes
+    const magicBytes = new Uint8Array([0x50, 0x4D, 0x4D, 0x53]); // Ascii PMMS
+    const dataView = new DataView(magicBytes.buffer);
+    const magicInt = dataView.getInt32(0, false); // false for Big Endian
+
+    // Ensure smmpMessage.header and smmpMessage.header.magic are defined
+    if (!smmpMessage.header || smmpMessage.header.magic == null) {
+        return false;
+    }
+
+    // Extract the magic value from the message
+    const extractedMagic = smmpMessage.header.magic;
+
+    // Compare the magic values
+    return magicInt === extractedMagic;
+}
+
+
+let certBytes: ArrayBuffer;
 async function loadCertAndPrivateKeyFromFiles() {
     if (!certFileInput.files.length || !privateKeyFileInput.files.length) {
         alert("Please provide a certificate and private key file")
@@ -257,7 +325,6 @@ async function loadCertAndPrivateKeyFromFiles() {
     }
 
     const certString = await certFileInput.files[0].text();
-    let certBytes: ArrayBuffer;
     if (certString.startsWith("-----BEGIN")) { // Is this PEM encoded?
         certBytes = extractFromPem(certString, "CERTIFICATE");
     } else { // Nope, it is probably just DER encoded then
@@ -277,6 +344,7 @@ async function loadCertAndPrivateKeyFromFiles() {
         name: "ECDSA",
         namedCurve: "P-384"
     }, false, ["sign"]);
+
 }
 
 function extractFromPem(pemInput: string, inputType: string): ArrayBuffer {
@@ -606,10 +674,13 @@ sendBtn.addEventListener("click", async () => {
         alert("You need to choose message type!");
     }
 
+
     let body: Uint8Array;
     if (encodedFile) {
+        console.log("B1")
         body = encodedFile;
     } else {
+        console.log("B2")
         const text = msgArea.value;
         const encoder = new TextEncoder();
         body = encoder.encode(text);
@@ -636,8 +707,19 @@ sendBtn.addEventListener("click", async () => {
             })
         })
     });
+    let subjectCastMsg : boolean = false
 
-    let uint8Arrays: Uint8Array[] = [];
+    if (mrnRadio.checked) {
+        const receiver = receiverMrnSelect.options[receiverMrnSelect.selectedIndex].value;
+        sendMsg.protocolMessage.sendMessage.applicationMessage.header.recipients = Recipients.create({
+            recipients: [receiver]
+        });
+    } else if (subjectRadio.checked) {
+        sendMsg.protocolMessage.sendMessage.applicationMessage.header.subject = subjectSelect.options[subjectSelect.selectedIndex].value;
+        subjectCastMsg = true
+    }
+
+    /*let uint8Arrays: Uint8Array[] = [];
     const encoder = new TextEncoder();
 
     if (mrnRadio.checked) {
@@ -677,12 +759,14 @@ sendBtn.addEventListener("click", async () => {
     let sequence = new Sequence();
     sequence.valueBlock.value.push(Integer.fromBigInt(bufToBigint(r)));
     sequence.valueBlock.value.push(Integer.fromBigInt(bufToBigint(s)));
-    sendMsg.protocolMessage.sendMessage.applicationMessage.signature = new Uint8Array(sequence.toBER());
+    sendMsg.protocolMessage.sendMessage.applicationMessage.signature = new Uint8Array(sequence.toBER());*/
+    let signedSendMsg = await signMessage(sendMsg, subjectCastMsg)
 
-    const toBeSent = MmtpMessage.encode(sendMsg).finish();
-    console.log("MMTP message: ", sendMsg);
-    lastSentMessage = sendMsg;
+    const toBeSent = MmtpMessage.encode(signedSendMsg).finish();
+    console.log("MMTP message: ", signedSendMsg);
+    lastSentMessage = signedSendMsg;
     ws.send(toBeSent);
+    console.log("MSG SENT!")
 
     msgArea.value = "";
     encodedFile = undefined;
@@ -690,6 +774,30 @@ sendBtn.addEventListener("click", async () => {
     unloadedState.style.display = 'block';
 });
 
+smmpConnectBtn.addEventListener("click", async () => {
+    const rcClientMrn = document.getElementById("rcClientMrn") as HTMLInputElement
+    console.log(rcClientMrn.value)
+
+    let smmpMsg = getSmmpHandshakeMessage()
+    const smmpPayload = SmmpMessage.encode(smmpMsg).finish()
+    let mmtpMsg = getMmtpSendMrnMsg(rcClientMrn.value, smmpPayload)
+
+    let signedSendMsg = await signMessage(mmtpMsg, false)
+
+    const toBeSent = MmtpMessage.encode(signedSendMsg).finish();
+    console.log("MMTP message: ", signedSendMsg);
+    lastSentMessage = signedSendMsg;
+    ws.send(toBeSent);
+    console.log("MSG SENT!")
+
+    msgArea.value = "";
+    encodedFile = undefined;
+    loadedState.style.display = 'none';
+    unloadedState.style.display = 'block';
+});
+
+
+//Message receive
 const receiveBtn = document.getElementById("receiveBtn") as HTMLButtonElement;
 receiveBtn.addEventListener("click", () => {
     const receive = MmtpMessage.create({
@@ -732,6 +840,147 @@ function handleFiles() {
         console.log("call finished");
     }
 }
+
+//Define helper SMMP Functions---------------------------
+enum FlagsEnum {
+    Handshake = 1 << 0,         // H (bit value 1)
+    ACK = 1 << 1,               // A (bit value 2)
+    Confidentiality = 1 << 2,   // C (bit value 4)
+    DeliveryGuarantee = 1 << 3, // D (bit value 8)
+    NonRepudiation = 1 << 4     // N (bit value 16)
+}
+
+function setFlags(flags: FlagsEnum[]) : number {
+    let result = 0
+    for (const flag of flags) {
+        result |= flag;
+    }
+    return result;
+}
+
+function hasFlags(val : number, flags : FlagsEnum[]) : boolean {
+    for (const flag  of flags) {
+        if ((val&flag) === 0) {
+            return false
+        }
+    }
+    return true
+}
+
+function getMmtpSendMrnMsg(recipientMrn : string, body : Uint8Array) {
+    const expires = new Date();
+    expires.setTime(expires.getTime() + 3_600_000);
+
+    const sendMsg = MmtpMessage.create({
+        msgType: MsgType.PROTOCOL_MESSAGE,
+        uuid: uuidv4(),
+        protocolMessage: ProtocolMessage.create({
+            protocolMsgType: ProtocolMessageType.SEND_MESSAGE,
+            sendMessage: Send.create({
+                applicationMessage: ApplicationMessage.create({
+                    header: ApplicationMessageHeader.create({
+                        expires: expires.getTime(),
+                        sender: ownMrn,
+                        bodySizeNumBytes: body.length,
+                    }),
+                    body: body,
+                })
+            })
+        })
+    });
+    sendMsg.protocolMessage.sendMessage.applicationMessage.header.recipients = Recipients.create({
+        recipients: [recipientMrn]
+    });
+
+    return sendMsg
+}
+
+
+
+
+function getSmmpMessage(flags : FlagsEnum[], blcNum : number, totalBlcs : number, smmpUuid : string, smmpData : Uint8Array) {
+    const magicBytes = new Uint8Array([0x50, 0x4D, 0x4D, 0x53]); //Ascii PMMS
+    const dataView = new DataView(magicBytes.buffer);
+    const magicInt = dataView.getInt32(0, false); // false for Big Endian
+    let controlBits = setFlags(flags)
+
+    //Due to an unsafe cast in the Go Implementation - TODO: This needs to be changed in both implementations
+    const arr = new Uint8Array(2)
+    arr[1] = controlBits
+    console.log(arr.toString())
+
+    const smmpMsg = SmmpMessage.create({
+        header: SmmpHeader.create({
+            magic: magicInt,
+            control : arr,
+            blockNum : blcNum,
+            totalBlocks : totalBlcs,
+            payloadLen : smmpData.length,
+            uuid : smmpUuid
+        }),
+        data : smmpData
+    })
+    return smmpMsg
+}
+
+function getSmmpHandshakeMessage() {
+    const flags : FlagsEnum[] = [FlagsEnum.Handshake, FlagsEnum.Confidentiality, FlagsEnum.DeliveryGuarantee]
+    //Get the signing certificate
+    return getSmmpMessage(flags, 0, 1, uuidv4(), new Uint8Array(certBytes))
+}
+
+
+function getSmmpHandshakeAckMessage() {
+    const flags : FlagsEnum[] = [FlagsEnum.Handshake, FlagsEnum.ACK, FlagsEnum.Confidentiality]
+    //Get the signing certificate
+    return getSmmpMessage(flags, 0, 1, uuidv4(), new Uint8Array(certBytes))
+}
+
+async function signMessage(msg : MmtpMessage, subject : boolean) {
+    const appMsgHeader = msg.protocolMessage.sendMessage.applicationMessage.header
+    const appMsg = msg.protocolMessage.sendMessage.applicationMessage
+
+    let uint8Arrays: Uint8Array[] = [];
+    const encoder = new TextEncoder();
+
+    console.log("Send to ", appMsgHeader.recipients.recipients[0])
+
+    if (subject) {
+        uint8Arrays.push(encoder.encode(appMsgHeader.subject));
+    } else {
+        uint8Arrays.push(encoder.encode(appMsgHeader.recipients.recipients[0]));
+    }
+
+    uint8Arrays.push(encoder.encode(appMsgHeader.expires.toString()));
+    uint8Arrays.push(encoder.encode(ownMrn));
+    uint8Arrays.push(encoder.encode(appMsg.body.length.toString()));
+    uint8Arrays.push(appMsg.body);
+
+    let length = uint8Arrays.reduce((acc, a) => acc + a.length, 0);
+
+    let bytesToBeSigned = new Uint8Array(length);
+    let offset = 0;
+    for (const array of uint8Arrays) {
+        bytesToBeSigned.set(array, offset);
+        offset += array.length;
+    }
+
+    const signature = new Uint8Array(await crypto.subtle.sign({
+        name: "ECDSA",
+        hash: "SHA-384"
+    }, privateKey, bytesToBeSigned));
+
+    const r = signature.slice(0, signature.length / 2);
+    const s = signature.slice(signature.length / 2, signature.length);
+
+    let sequence = new Sequence();
+    sequence.valueBlock.value.push(Integer.fromBigInt(bufToBigint(r)));
+    sequence.valueBlock.value.push(Integer.fromBigInt(bufToBigint(s)));
+    msg.protocolMessage.sendMessage.applicationMessage.signature = new Uint8Array(sequence.toBER());
+
+    return msg
+}
+
 
 const loadedState = document.getElementById('file-state-loaded');
 const unloadedState = document.getElementById('file-state-unloaded');

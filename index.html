@@ -19,6 +19,19 @@
         </div>
         <hr class="hr"/>
     </div>
+
+    <div class="row" id="smmpMenu" hidden>
+        <div class="col-6">
+            <h3>SMMP Session Establishment</h3>
+                <div class="form-group mb-2">
+                    <label for="rcClientMrn" class="sr-only">Remote Client MRN</label>
+                    <input type="text" class="form-control" id="rcClientMrn" placeholder="urn:mrn:mcp:device:mcc:core:abc">
+                </div>
+                <button type="submit" class="btn btn-primary mb-2" id="smmpConnectBtn">Connect SMMP</button>
+        </div>
+    </div>
+
+
     <div class="row" id="receiveContainer" hidden>
         <h3>Received messages</h3>
         <div class="container h-100">
