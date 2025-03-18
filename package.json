@@ -42,6 +42,6 @@
     "pkijs": "^3.2.4",
     "protobufjs": "^7.4.0",
     "stream-browserify": "^3.0.0",
-    "uuid": "^10.0.0"
+    "uuid": "^11.0.4"
   }
 }
