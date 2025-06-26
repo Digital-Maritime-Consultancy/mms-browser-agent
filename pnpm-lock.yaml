@@ -50,7 +50,7 @@ importers:
         version: 5.2.10
       '@types/jquery':
         specifier: ^3.5.29
-        version: 3.5.31
+        version: 3.5.32
       '@types/uuid':
         specifier: ^10.0.0
         version: 10.0.0
@@ -823,8 +823,8 @@ packages:
   '@types/http-proxy@1.17.11':
     resolution: {integrity: sha512-HC8G7c1WmaF2ekqpnFq626xd3Zz0uvaqFmBJNRZCGEZCXkvSdJoNFn/8Ygbd9fKNQj8UzLdCETaI0UWPAjK7IA==}
 
-  '@types/jquery@3.5.31':
-    resolution: {integrity: sha512-rf/iB+cPJ/YZfMwr+FVuQbm7IaWC4y3FVYfVDxRGqmUCFjjPII0HWaP0vTPJGp6m4o13AXySCcMbWfrWtBFAKw==}
+  '@types/jquery@3.5.32':
+    resolution: {integrity: sha512-b9Xbf4CkMqS02YH8zACqN1xzdxc3cO735Qe5AbSUFmyOiaWAbcpqh9Wna+Uk0vgACvoQHpWDg2rGdHkYPLmCiQ==}
 
   '@types/json-schema@7.0.12':
     resolution: {integrity: sha512-Hr5Jfhc9eYOQNPYO5WLDq/n4jqijdHNlDXjuAQkkt+mWdQR+XJToOHrsD4cPaMXpn6KO7y2+wM8AZEs8VpBLVA==}
@@ -3899,7 +3899,7 @@ snapshots:
     dependencies:
       '@types/node': 20.4.7
 
-  '@types/jquery@3.5.31':
+  '@types/jquery@3.5.32':
     dependencies:
       '@types/sizzle': 2.3.8
 
